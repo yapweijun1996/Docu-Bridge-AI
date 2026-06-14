@@ -74,7 +74,7 @@
   // ============================ Upload ============================
   function UploadBatch({ go }) {
     const store = useStore();
-    const [name, setName] = React.useState('June Purchase Orders ' + new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }));
+    const [name, setName] = React.useState(new Date().toLocaleDateString('en-GB', { month: 'long' }) + ' Purchase Orders ' + new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }));
     const [type, setType] = React.useState('Purchase Order');
     const [drag, setDrag] = React.useState(false);
     const [queue, setQueue] = React.useState([]);

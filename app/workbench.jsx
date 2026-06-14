@@ -336,7 +336,7 @@
                   h(Icons.Code, { w: 15 }))))),
 
             tab === 'agent' && h('div', { className: 'dbk-fieldgroup' },
-              h('div', { className: 'dbk-fg-label' }, 'Agent steps' + (doc.ocr_provider ? ' · ' + doc.ocr_provider : '')),
+              h('div', { className: 'dbk-fg-label' }, 'Agent steps'),
               (!doc.agent_steps || doc.agent_steps.length === 0)
                 ? h('div', { className: 'db-quiet', style: { padding: '8px 2px' } }, 'No agent steps recorded for this document.')
                 : doc.agent_steps.map((s, i) => h('div', { key: i, className: 'dbk-checkitem', style: { alignItems: 'flex-start', gap: 8 } },
