@@ -10,3 +10,13 @@ Sample/
 
 # Node (none currently, but guard against accidental installs)
 node_modules/
+
+# Local live-test secrets — NEVER commit a real API key
+.env
+.env.*
+!.env.sample
+
+# Live-test documents you drop in for the agent to extract (keep the folder + README,
+# ignore the actual files so private PDFs/images never get committed)
+_live_test/*
+!_live_test/README.md

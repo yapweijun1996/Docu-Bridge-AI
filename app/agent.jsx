@@ -3,11 +3,12 @@
    runtime.run() for real providers.
 
    ⚠️ STATUS — UNVERIFIED LIVE PATH:
-   The mock-bypass path is verified (no key needed). The agrun runtime.run()
-   planner path is NOT verified — it needs a real provider key + the user's
-   browser to exercise. It is SAFE-BY-CONSTRUCTION: on ANY error it falls back
-   to the proven direct extraction (LLMProviders.ocrExtractWithFallback), so
-   extraction quality (strict schema + bbox) is preserved regardless.
+   The agrun runtime.run() planner path is NOT verified — it needs a real
+   provider key + the user's browser to exercise. It is SAFE-BY-CONSTRUCTION:
+   on ANY error it falls back to the proven direct extraction
+   (LLMProviders.ocrExtractWithFallback), so extraction quality (strict schema +
+   bbox) is preserved regardless. There is no mock path anymore — extraction
+   always requires a real provider key (enforced upstream in db.jsx commitBatch).
 
    Architectural note: agrun's planner is text-prompt-driven; OCR is
    image -> structured-JSON + bbox. For SINGLE-SHOT extraction the planner is
@@ -25,16 +26,16 @@
   const modelOf = (s) => (s.provider === 'gemini' ? s.geminiModel : s.openaiModel);
   const skillOf = (s) => (s.provider === 'gemini' ? A.geminiBrowserSkill : A.openaiBrowserSkill);
 
-  // Direct extraction (the proven path) — used for mock and as the agent fallback.
+  // Direct extraction (the proven path) — used as the agent fallback.
   async function direct(f, type, batchId, seq, settings, pathTag, err) {
-    const d = await window.LLMProviders.ocrExtractWithFallback(f, type, batchId, seq, settings || { provider: 'mock' });
+    const d = await window.LLMProviders.ocrExtractWithFallback(f, type, batchId, seq, settings);
     d.agent_path = pathTag;
     if (err) d._agent_error = err;
     // T011: no agent loop ran on the direct path — leave a single explanatory step.
     d.agent_steps = [{ type: pathTag === 'direct-fallback' ? 'fallback' : 'direct',
       name: '', summary: pathTag === 'direct-fallback'
-        ? ('Agent loop failed — used direct extraction. ' + (err || ''))
-        : 'Mock/direct extraction — agrun planner loop bypassed (no LLM in mock mode).' }];
+        ? ('Agent loop failed — used direct provider extraction. ' + (err || ''))
+        : 'Direct provider extraction — agrun planner loop bypassed.' }];
     return d;
   }
 
@@ -49,12 +50,12 @@
     } catch (e) { return { type: 'step', name: '', summary: '' }; }
   }
 
-  // Run one document. Real providers go through agrun's runtime.run(); mock (no
-  // LLM to drive the planner) and any failure use the direct extraction path.
+  // Run one document. Real providers go through agrun's runtime.run(); any
+  // failure (or a missing source blob) uses the direct extraction path.
   async function runDocumentAgent(f, type, batchId, seq, settings, onStep) {
-    // Mock has no LLM to drive the planner — bypass agrun entirely.
-    if (!settings || settings.provider === 'mock' || !f.blob) {
-      return direct(f, type, batchId, seq, settings, 'mock-direct');
+    // No source blob — nothing for a provider to read; surface as a failure.
+    if (!settings || !f.blob) {
+      return direct(f, type, batchId, seq, settings, 'direct');
     }
 
     const steps = [];   // T011: collect agent steps for the workbench inspector
@@ -64,7 +65,17 @@
       const extractAction = A.defineAction({
         name: 'extract_document',
         description: 'Extract all structured fields, line items, totals and per-field bounding boxes from the current business document. Call this once, then finalize with its output.',
-        tier: 0,
+        tier: 1, // agrun requires a positive integer tier (1/2/3); extraction is a safe read-style op
+        // agrun requires a planner spec. This action takes NO args — it closes over the
+        // current document — so argsSchema is the empty-args declaration {} and the
+        // guidance tells the planner to call it once with no arguments.
+        planner: {
+          argsSchema: {},
+          argsExample: {},
+          guidance: 'Call extract_document exactly once to read the current document. It needs no arguments. After it returns, finalize with its output.',
+        },
+        // Waiver: the action returns our internal document object, not a planner-validated shape.
+        outputSchema: null,
         execute: async () => {
           const doc = await window.LLMProviders.ocrExtractWithFallback(f, type, batchId, seq, settings);
           return { control: 'complete', output: doc, summary: 'extracted ' + (doc.document_no || f.name) };

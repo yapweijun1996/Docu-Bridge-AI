@@ -59,7 +59,7 @@
     return doc;
   }
 
-  const DEFAULT_SETTINGS = { provider: 'mock', openaiKey: '', geminiKey: '', openaiModel: 'gpt-5.4-mini', geminiModel: 'gemini-3.5-flash' };
+  const DEFAULT_SETTINGS = { provider: 'gemini', openaiKey: '', geminiKey: '', openaiModel: 'gpt-5.4-mini', geminiModel: 'gemini-3.5-flash' };
 
   const StoreCtx = React.createContext(null);
 
@@ -78,17 +78,23 @@
       toastTimer.current = setTimeout(() => setToast(null), 3200);
     }, []);
 
-    // boot: open db, seed on first run, load all
+    // boot: open db, purge any legacy seed/sample data, load all
     React.useEffect(() => {
       let alive = true;
       (async () => {
         const d = await openDB();
-        const seeded = await getMeta(d, 'seeded');
-        if (!seeded) {
-          const s = C.seed();
-          for (const b of s.batches) await put(d, 'batches', b);
-          for (const doc of s.documents) await put(d, 'documents', clone(doc));
-          await put(d, 'meta', { key: 'seeded', value: true });
+        // One-time cleanup: earlier builds seeded synthetic "sample" docs (is_sample===true)
+        // straight into IndexedDB. Real uploads are always is_sample===false, so we can
+        // safely delete every is_sample doc and any batch left empty afterwards.
+        const allDocs = await getAll(d, 'documents');
+        const sampleDocs = allDocs.filter((x) => x.is_sample === true);
+        if (sampleDocs.length) {
+          for (const x of sampleDocs) await del(d, 'documents', x.document_id);
+          const remaining = await getAll(d, 'documents');
+          const liveBatchIds = new Set(remaining.map((x) => x.batch_id));
+          for (const b of await getAll(d, 'batches')) {
+            if (!liveBatchIds.has(b.batch_id)) await del(d, 'batches', b.batch_id);
+          }
         }
         const [bs, ds, savedSettings] = [await getAll(d, 'batches'), await getAll(d, 'documents'), await getMeta(d, 'llm_settings')];
         if (!alive) return;
@@ -127,7 +133,7 @@
     const actions = React.useMemo(() => ({
       notify,
 
-      // Create a batch from uploaded files; run mock OCR (with a processing delay).
+      // Create a batch from uploaded files; run real-provider OCR (with a processing delay).
       async commitBatch(meta, files) {
         const t = C.typeFromLabel(meta.typeLabel);
         const batch = { batch_id: C.uid('b'), batch_name: meta.name || 'Untitled batch', document_type: t.key,
@@ -135,41 +141,47 @@
         await persistBatch(batch);
         setBatches((p) => [batch, ...p]);
 
-        // create placeholder docs in 'processing' (mock OCR for immediate UI feedback)
+        // empty placeholder docs in 'processing' for immediate UI feedback (no fabricated data)
         const docs = files.map((f, i) => {
-          const d = C.mockOCR(f.name, t.key, batch.batch_id, i + 1);
+          const d = C.makeDoc({ type: t.key, batch_id: batch.batch_id, file: f.name, values: {}, lineItems: [], status: 'processing' });
+          d.is_sample = false;
           d.file_blob = f.blob || null;
-          d.status = 'processing';
           d.created_at = C.now() + i;
           return d;
         });
         for (const d of docs) await persistDoc(d);
         setDocuments((p) => [...docs, ...p]);
 
-        // resolve OCR — use real LLM if configured, then update placeholders
+        // resolve OCR via the configured real provider, then update placeholders
         const currentSettings = settings;
+        const noKey = !((currentSettings.provider === 'gemini' ? currentSettings.geminiKey : currentSettings.openaiKey) || '').trim();
         setTimeout(async () => {
           const resolved = await Promise.all(docs.map(async (d, i) => {
             const f = files[i];
-            if (currentSettings.provider !== 'mock' && f.blob) {
-              try {
-                const extracted = await window.DocAgent.runDocumentAgent(f, t.key, batch.batch_id, i + 1, currentSettings, null);
-                extracted.document_id = d.document_id;
-                extracted.file_blob = d.file_blob;
-                extracted.created_at = d.created_at;
-                extracted.is_sample = false;
-                if (extracted.fail_reason) { extracted.status = 'failed'; return extracted; }
-                extracted.status = C.deriveStatus({ ...extracted, status: 'need_review' });
-                return extracted;
-              } catch (err) {
-                d.status = 'failed';
-                d.fail_reason = 'LLM extraction failed: ' + err.message;
-                return d;
-              }
+            if (noKey) {
+              d.status = 'failed';
+              d.fail_reason = 'No API key for ' + currentSettings.provider + ' — add one in Settings, then Reprocess.';
+              return d;
             }
-            if (d.fail_reason) { d.status = 'failed'; return d; }
-            d.status = C.deriveStatus({ ...d, status: 'need_review' });
-            return d;
+            if (!f.blob) {
+              d.status = 'failed';
+              d.fail_reason = 'No source file available to extract.';
+              return d;
+            }
+            try {
+              const extracted = await window.DocAgent.runDocumentAgent(f, t.key, batch.batch_id, i + 1, currentSettings, null);
+              extracted.document_id = d.document_id;
+              extracted.file_blob = d.file_blob;
+              extracted.created_at = d.created_at;
+              extracted.is_sample = false;
+              if (extracted.fail_reason) { extracted.status = 'failed'; return extracted; }
+              extracted.status = C.deriveStatus({ ...extracted, status: 'need_review' });
+              return extracted;
+            } catch (err) {
+              d.status = 'failed';
+              d.fail_reason = 'Extraction failed: ' + (err && err.message ? err.message : err);
+              return d;
+            }
           }));
           for (const d of resolved) await persistDoc(d);
           setDocuments((prev) => {
@@ -177,15 +189,15 @@
             refreshBatch(batch.batch_id, next);
             return next;
           });
-          const fallbackCount = resolved.filter((d) => d.ocr_provider && d.ocr_provider.includes('fallback')).length;
-          const okCount = resolved.filter((d) => !d.fail_reason).length;
+          const failCount = resolved.filter((d) => d.fail_reason).length;
+          const okCount = resolved.length - failCount;
           notify(
-            fallbackCount
-              ? 'OCR done — ' + okCount + '/' + resolved.length + ' extracted · ⚠ ' + fallbackCount + ' fell back to mock (LLM failed)'
+            failCount
+              ? 'OCR done — ' + okCount + '/' + resolved.length + ' extracted · ⚠ ' + failCount + ' failed'
               : 'OCR complete — ' + okCount + ' of ' + resolved.length + ' documents extracted',
-            fallbackCount ? 'warning' : 'success'
+            failCount ? 'warning' : 'success'
           );
-        }, currentSettings.provider !== 'mock' ? 800 : 2200);
+        }, 800);
 
         return batch;
       },
@@ -239,23 +251,26 @@
       },
 
       async reprocessDoc(doc) {
+        const noKey = !((settings.provider === 'gemini' ? settings.geminiKey : settings.openaiKey) || '').trim();
         let fresh;
-        if (settings.provider !== 'mock' && doc.file_blob) {
+        if (noKey) {
+          fresh = { ...doc, status: 'failed', fail_reason: 'No API key for ' + settings.provider + ' — add one in Settings.', updated_at: C.now() };
+        } else if (!doc.file_blob) {
+          fresh = { ...doc, status: 'failed', fail_reason: 'No source file available to extract.', updated_at: C.now() };
+        } else {
           try {
             fresh = await window.LLMProviders.ocrExtractWithFallback(
               { name: doc.file_name, blob: doc.file_blob }, doc.document_type, doc.batch_id, 99, settings
             );
+            fresh.document_id = doc.document_id; fresh.file_blob = doc.file_blob; fresh.created_at = doc.created_at;
+            fresh.is_sample = false;
           } catch (err) {
-            fresh = C.mockOCR(doc.file_name, doc.document_type, doc.batch_id, 99);
+            fresh = { ...doc, status: 'failed', fail_reason: 'Extraction failed: ' + (err && err.message ? err.message : err), updated_at: C.now() };
           }
-        } else {
-          fresh = C.mockOCR(doc.file_name, doc.document_type, doc.batch_id, 99);
         }
-        fresh.document_id = doc.document_id; fresh.file_blob = doc.file_blob; fresh.created_at = doc.created_at;
-        fresh.is_sample = doc.is_sample;
         await persistDoc(fresh);
         setDocuments((prev) => { const next = prev.map((p) => (p.document_id === fresh.document_id ? fresh : p)); refreshBatch(fresh.batch_id, next); return next; });
-        notify(fresh.fail_reason ? 'Reprocess failed again — check the source file' : 'Reprocessed — ready for review', fresh.fail_reason ? 'error' : 'success');
+        notify(fresh.fail_reason ? 'Reprocess failed — ' + fresh.fail_reason : 'Reprocessed — ready for review', fresh.fail_reason ? 'error' : 'success');
         return fresh;
       },
 
@@ -276,14 +291,9 @@
         if (!db) return;
         for (const b of batches) await del(db, 'batches', b.batch_id);
         for (const d of documents) await del(db, 'documents', d.document_id);
-        await put(db, 'meta', { key: 'seeded', value: false });
-        const s = C.seed();
-        for (const b of s.batches) await put(db, 'batches', b);
-        for (const doc of s.documents) await put(db, 'documents', clone(doc));
-        await put(db, 'meta', { key: 'seeded', value: true });
-        setBatches(s.batches.sort((a, b) => b.created_at - a.created_at));
-        setDocuments(s.documents.sort((a, b) => b.created_at - a.created_at));
-        notify('Demo data reset', 'success');
+        setBatches([]);
+        setDocuments([]);
+        notify('All data cleared', 'success');
       },
     }), [db, documents, batches, settings, notify, persistDoc, persistBatch, refreshBatch]);
 

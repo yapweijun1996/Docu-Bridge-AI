@@ -1,4 +1,4 @@
-/* DocuBridge AI — LLM provider adapters (OpenAI + Gemini + Mock fallback).
+/* DocuBridge AI — LLM provider adapters (OpenAI + Gemini, real providers only).
    BYOK: user supplies their own API key in Settings. Key never leaves the browser.
    Exposes window.LLMProviders = { ocrExtractWithFallback, testConnection } */
 (function () {
@@ -174,35 +174,52 @@
     return map;
   }
 
-  // Map LLM extraction result → makeDoc() opts
+  // Map LLM extraction result → makeDoc() opts.
+  // Defensive against key drift: without a strict responseSchema the model may use
+  // variant key names (no/total/qty/buyer/seller…), so we alias common synonyms.
   function llmToMakeDocOpts(result, type, batchId, fileName) {
+    const pick = (...keys) => { for (const k of keys) { if (result[k] != null && result[k] !== '') return result[k]; } return ''; };
     const conf = {};
     (C.LAYOUTS[type] ? C.LAYOUTS[type].fields : []).forEach((f) => { conf[f.key] = 0.88; });
-    const values = {};
-    ['document_title', 'document_no', 'transaction_date', 'credit_term', 'payment_terms',
-     'bill_to', 'ship_to', 'supplier', 'customer', 'delivery_address', 'terms_and_conditions'].forEach((k) => {
-      values[k] = result[k] || '';
+    const values = {
+      document_title: pick('document_title', 'title', 'doc_title'),
+      document_no: pick('document_no', 'document_number', 'doc_no', 'po_no', 'invoice_no', 'reference_no', 'number'),
+      transaction_date: pick('transaction_date', 'date', 'doc_date', 'issue_date'),
+      credit_term: pick('credit_term', 'credit_terms'),
+      payment_terms: pick('payment_terms', 'terms', 'payment_term'),
+      bill_to: pick('bill_to', 'billing', 'bill_to_address'),
+      ship_to: pick('ship_to', 'shipping', 'ship_to_address'),
+      supplier: pick('supplier', 'seller', 'vendor', 'from'),
+      customer: pick('customer', 'buyer', 'to'),
+      delivery_address: pick('delivery_address', 'delivery'),
+      terms_and_conditions: pick('terms_and_conditions', 'terms_conditions', 'notes'),
+    };
+    const numOf = (...keys) => { for (const k of keys) { if (result[k] != null && result[k] !== '') return result[k]; } return null; };
+    const sub = numOf('subtotal', 'sub_total', 'sub-total'), gstv = numOf('gst', 'tax', 'vat'), grand = numOf('grand_total', 'total', 'total_amount', 'amount_due');
+    values.subtotal = sub != null ? C.money(sub) : '';
+    values.gst = gstv != null ? C.money(gstv) : '';
+    values.grand_total = grand != null ? C.money(grand) : '';
+    const lineItems = (result.line_items || result.items || result.lines || []).map((li, i) => {
+      const lp = (...keys) => { for (const k of keys) { if (li[k] != null && li[k] !== '') return li[k]; } return undefined; };
+      const numv = (v) => (typeof v === 'number' ? v : C.num(v));
+      return {
+        serial_no: String(lp('serial_no', 'no', 'line_no', 'sn', 'item_no') || (i + 1)),
+        stock_code: lp('stock_code', 'code', 'sku', 'item_code', 'product_code') || '',
+        description: lp('description', 'desc', 'item', 'name', 'product') || '',
+        remark: lp('remark', 'remarks', 'note') || '',
+        quantity: numv(lp('quantity', 'qty', 'quantity_ordered')),
+        uom: lp('uom', 'unit', 'units') || 'pcs',
+        unit_price: numv(lp('unit_price', 'price', 'unitPrice', 'rate')),
+        total_price: numv(lp('total_price', 'total', 'amount', 'line_total', 'lineTotal')),
+        confidence: 0.88,
+      };
     });
-    values.subtotal = result.subtotal != null ? C.money(result.subtotal) : '';
-    values.gst = result.gst != null ? C.money(result.gst) : '';
-    values.grand_total = result.grand_total != null ? C.money(result.grand_total) : '';
-    const lineItems = (result.line_items || []).map((li, i) => ({
-      serial_no: li.serial_no || String(i + 1),
-      stock_code: li.stock_code || '',
-      description: li.description || '',
-      remark: li.remark || '',
-      quantity: typeof li.quantity === 'number' ? li.quantity : C.num(li.quantity),
-      uom: li.uom || 'pcs',
-      unit_price: typeof li.unit_price === 'number' ? li.unit_price : C.num(li.unit_price),
-      total_price: typeof li.total_price === 'number' ? li.total_price : C.num(li.total_price),
-      confidence: 0.88,
-    }));
     return {
       type, batch_id: batchId, file: fileName,
-      company: result.company || '', address: result.address || '',
+      company: result.company || result.company_name || '', address: result.address || '',
       values, conf, lineItems,
-      boxes: boxesToMap(result.boxes),
-      totals: { subtotal: result.subtotal || 0, gst: result.gst || 0, grand: result.grand_total || 0 },
+      boxes: boxesToMap(result.boxes || result.bounding_boxes),
+      totals: { subtotal: C.num(sub) || 0, gst: C.num(gstv) || 0, grand: C.num(grand) || 0 },
       status: 'need_review',
     };
   }
@@ -251,9 +268,28 @@
     const mime = isPdf ? 'application/pdf' : (ext === 'png' ? 'image/png' : 'image/jpeg');
     const base64 = await blobToBase64(f.blob);
     const m = model || 'gemini-3.5-flash';
-    const gc = { responseMimeType: 'application/json', responseSchema: GEMINI_SCHEMA, temperature: 0 };
+    // IMPORTANT: do NOT send responseSchema here. Strict structured-output on Gemini
+    // flash/flash-lite degenerates on dense/multi-page docs (returns empty fields, or
+    // loops repeating one value into a 65KB unparseable blob — proven in live testing).
+    // Use responseMimeType:'application/json' + an explicit key list in the prompt, and
+    // parse defensively (llmToMakeDocOpts aliases key variants).
+    const gc = { responseMimeType: 'application/json', temperature: 0 };
     // 3.x are thinking models — thinking ON at low by default (let it finish; no token cap)
     if (/gemini-3/.test(m)) gc.thinkingConfig = { thinkingLevel: 'low' };
+    const label = C.TYPES[type] ? C.TYPES[type].label : type;
+    const prompt =
+      'You are a document data-extraction engine. Read this ' + label + ' document (it may span MULTIPLE pages) ' +
+      'and return ONE JSON object with EXACTLY these keys:\n' +
+      '- company, address, document_title, document_no, transaction_date, credit_term, payment_terms, ' +
+      'bill_to, ship_to, supplier, customer, delivery_address, terms_and_conditions — strings (use "" if absent). ' +
+      'For transaction_date prefer YYYY-MM-DD.\n' +
+      '- subtotal, gst, grand_total — numbers (use 0 if absent).\n' +
+      '- line_items — an array containing EVERY row across ALL pages; each item is ' +
+      '{ serial_no, stock_code, description, remark, quantity, uom, unit_price, total_price }.\n' +
+      '- boxes — an array; for EVERY field you found, one entry { key, ymin, xmin, ymax, xmax } where key is the ' +
+      'field name (e.g. "document_no", "grand_total") and the four numbers are the bounding box as ' +
+      '[ymin, xmin, ymax, xmax] — the VERTICAL (y) axis comes FIRST — each an integer normalized 0-1000, origin top-left.\n' +
+      'Extract real values only; never invent data. Return ONLY the JSON object.';
     const resp = await fetchWithTimeout(
       'https://generativelanguage.googleapis.com/v1beta/models/' + m + ':streamGenerateContent?alt=sse&key=' + apiKey,
       {
@@ -262,11 +298,7 @@
         body: JSON.stringify({
           contents: [{ parts: [
             { inline_data: { mime_type: mime, data: base64 } },
-            { text: 'Extract all fields from this ' + (C.TYPES[type] ? C.TYPES[type].label : type) + ' document. ' +
-              'Additionally, for EVERY field you extract, return its bounding box on the page in the `boxes` array. ' +
-              'Each entry is { key, ymin, xmin, ymax, xmax } where key is the field name (e.g. document_no, transaction_date, grand_total, bill_to) ' +
-              'and the four numbers are the bounding box as [ymin, xmin, ymax, xmax] — the VERTICAL (y) axis comes FIRST — ' +
-              'each an integer normalized to 0-1000 with the origin at the top-left corner of the page.' },
+            { text: prompt },
           ]}],
           generationConfig: gc,
         }),
@@ -286,35 +318,23 @@
     return C.makeDoc(llmToMakeDocOpts(result, type, batchId, f.name));
   }
 
-  // ---------- mock adapter — wraps existing C.mockOCR ----------
-  function mockAdapter(f, type, batchId, seq) {
-    return C.mockOCR(f.name, type, batchId, seq);
-  }
-
-  // ---------- main entry point with fallback chain ----------
+  // ---------- main entry point (real providers only — no mock fallback) ----------
+  // On any failure this THROWS; callers mark the document failed with the message.
   async function ocrExtractWithFallback(f, type, batchId, seq, settings) {
-    const { provider = 'mock', openaiKey = '', geminiKey = '', openaiModel, geminiModel } = settings || {};
-    if (provider === 'mock') { const d = mockAdapter(f, type, batchId, seq); d.ocr_provider = 'mock'; return d; }
-    try {
-      let d;
-      if (provider === 'openai') d = await openaiAdapter(f, type, batchId, seq, openaiKey, openaiModel);
-      else if (provider === 'gemini') d = await geminiAdapter(f, type, batchId, seq, geminiKey, geminiModel);
-      else d = mockAdapter(f, type, batchId, seq);
-      d.ocr_provider = provider === 'openai' ? 'openai (' + (openaiModel || 'gpt-5.4-mini') + ')'
-        : provider === 'gemini' ? 'gemini (' + (geminiModel || 'gemini-3.5-flash') + ')' : 'mock';
-      return d;
-    } catch (err) {
-      console.warn('[LLMProviders]', provider, 'failed — falling back to mock:', err.message);
-      const doc = mockAdapter(f, type, batchId, seq);
-      doc.ocr_provider = 'mock (fallback)';
-      doc._llm_error = err.message;
-      return doc;
-    }
+    const { provider = 'gemini', openaiKey = '', geminiKey = '', openaiModel, geminiModel } = settings || {};
+    const key = provider === 'openai' ? openaiKey : geminiKey;
+    if (!key || !String(key).trim()) throw new Error('No API key for ' + provider + ' — add one in Settings.');
+    let d;
+    if (provider === 'openai') d = await openaiAdapter(f, type, batchId, seq, openaiKey, openaiModel);
+    else if (provider === 'gemini') d = await geminiAdapter(f, type, batchId, seq, geminiKey, geminiModel);
+    else throw new Error('Unknown provider: ' + provider);
+    d.ocr_provider = provider === 'openai' ? 'openai (' + (openaiModel || 'gpt-5.4-mini') + ')'
+      : 'gemini (' + (geminiModel || 'gemini-3.5-flash') + ')';
+    return d;
   }
 
   // ---------- Test connection — send a minimal prompt, return { ok, message } ----------
   async function testConnection(provider, apiKey, model) {
-    if (provider === 'mock') return { ok: true, message: 'Mock OCR — no API needed' };
     try {
       if (provider === 'openai') {
         if (!apiKey) return { ok: false, message: 'API key is empty' };
