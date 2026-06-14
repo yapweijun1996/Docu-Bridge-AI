@@ -168,9 +168,9 @@
     const failed = docs.filter((d) => d.status === 'failed');
     const reprocessAll = async () => { for (const d of failed) await store.reprocessDoc(d); };
 
-    return React.createElement('div', { className: 'dbk-page' },
+    return React.createElement('div', { className: 'dbk-page', onClick: (e) => { if (e.target.closest && e.target.closest('.db-pageheader__crumbs a')) { e.preventDefault(); go('batches'); } } },
       React.createElement(PageHeader, {
-        breadcrumbs: [{ label: 'Batches', href: '#', onClick: (e) => { e.preventDefault(); go('batches'); } }, { label: batch.batch_name }],
+        breadcrumbs: [{ label: 'Batches', href: '#' }, { label: batch.batch_name }],
         title: batch.batch_name,
         badge: React.createElement(StatusBadge, { status: batch.status }),
         description: docs.length + ' files · ' + C.TYPES[batch.document_type].label + ' · created by ' + batch.owner + ' · ' + C.ago(batch.updated_at),

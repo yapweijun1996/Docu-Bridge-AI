@@ -162,14 +162,17 @@
             if (noKey) {
               d.status = 'failed';
               d.fail_reason = 'No API key for ' + currentSettings.provider + ' — add one in Settings, then Reprocess.';
-              d.confidence = 0;
-              d.fields = (d.fields || []).map((f) => ({ ...f, value: '', confidence: 0 }));
+              d.confidence = null;
+              d.fields = (d.fields || []).map((f) => ({ ...f, value: '', confidence: null }));
               d.agent_steps = [{ type: 'failed', name: '', summary: 'No API key for ' + currentSettings.provider + ' — add one in Settings, then Reprocess.' }];
               return d;
             }
             if (!f.blob) {
               d.status = 'failed';
               d.fail_reason = 'No source file available to extract.';
+              d.confidence = null;
+              d.fields = (d.fields || []).map((fl) => ({ ...fl, value: '', confidence: null }));
+              d.agent_steps = [{ type: 'failed', name: '', summary: 'No source file stored — re-upload the document to extract.' }];
               return d;
             }
             try {
