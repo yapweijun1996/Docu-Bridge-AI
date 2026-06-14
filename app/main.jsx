@@ -52,7 +52,8 @@
       failed: store.documents.filter((d) => d.status === 'failed').length || null,
     };
     const bytes = store.documents.reduce((s, d) => s + (d.file_blob ? d.file_blob.size : 184000), 0);
-    const storage = { docs: store.documents.length, mb: (bytes / 1048576).toFixed(1), pct: Math.min(96, Math.round(store.documents.length / 240 * 100) + 6) };
+    const MAX_BYTES = 500 * 1048576; // 500 MB soft cap for display purposes
+    const storage = { docs: store.documents.length, mb: (bytes / 1048576).toFixed(1), pct: Math.min(96, Math.round(bytes / MAX_BYTES * 100)) };
     const active = NAV_OF[route.name] || 'dashboard';
 
     return h(React.Fragment, null,
