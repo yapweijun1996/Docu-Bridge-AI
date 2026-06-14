@@ -288,8 +288,10 @@
         // extraction panel
         h('div', { className: 'dbk-panel' },
           h('div', { className: 'dbk-panel-tabs' },
-            [['summary', 'Summary'], ['lines', 'Line Items'], ['validate', 'Validation'], ['json', 'Raw JSON']].map(([id, lab]) => h('button', { key: id, className: 'dbk-ptab' + (tab === id ? ' is-active' : ''), onClick: () => setTab(id) },
-              lab, id === 'validate' && liveIssues.length > 0 && h('span', { className: 'dbk-ptab__count' }, liveIssues.length)))),
+            [['summary', 'Summary'], ['lines', 'Line Items'], ['validate', 'Validation'], ['json', 'Raw JSON'], ['agent', 'Agent']].map(([id, lab]) => h('button', { key: id, className: 'dbk-ptab' + (tab === id ? ' is-active' : ''), onClick: () => setTab(id) },
+              lab,
+              id === 'validate' && liveIssues.length > 0 && h('span', { className: 'dbk-ptab__count' }, liveIssues.length),
+              id === 'agent' && (doc.agent_steps || []).length > 0 && h('span', { className: 'dbk-ptab__count' }, doc.agent_steps.length)))),
 
           h('div', { className: 'dbk-panel-scroll' },
             tab === 'summary' && h('div', { className: 'dbk-fieldgroup' },
@@ -336,6 +338,18 @@
                 h('button', { className: 'dbk-iconbtn', 'aria-label': 'Copy JSON',
                   onClick: () => { const obj = jsonSubTab === 'reviewed' ? C.toJSON(normalize(doc), 'reviewed') : doc.extracted_json; navigator.clipboard && navigator.clipboard.writeText(JSON.stringify(obj, null, 2)); store.notify('JSON copied to clipboard', 'success'); } },
                   h(Icons.Code, { w: 15 }))))),
+
+            tab === 'agent' && h('div', { className: 'dbk-fieldgroup' },
+              h('div', { className: 'dbk-fg-label' }, 'Agent steps' + (doc.ocr_provider ? ' · ' + doc.ocr_provider : '')),
+              (!doc.agent_steps || doc.agent_steps.length === 0)
+                ? h('div', { className: 'db-quiet', style: { padding: '8px 2px' } }, 'No agent steps recorded for this document.')
+                : doc.agent_steps.map((s, i) => h('div', { key: i, className: 'dbk-checkitem', style: { alignItems: 'flex-start', gap: 8 } },
+                    h('span', { className: 'dbk-mono', style: { fontSize: 11, color: 'var(--brand-600, #2563eb)', minWidth: 64 } }, s.type || 'step'),
+                    h('div', { style: { flex: 1 } },
+                      s.name && h('div', { className: 'dbk-mono', style: { fontSize: 12, fontWeight: 600 } }, s.name),
+                      h('div', { style: { fontSize: 12, color: 'var(--text-muted)' } }, s.summary || '—')))),
+              h('div', { style: { fontSize: 11, color: 'var(--text-muted)', marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--border)' } },
+                'Steps stream from the agrun agent loop during extraction. Documents extracted via the mock/direct path show a single explanatory row.')),
 
           errs.length > 0
             ? h('div', { className: 'dbk-panel-foot' }, h(Icons.Alert, { w: 15 }), h('span', null, errs.length + ' error' + (errs.length > 1 ? 's' : '') + ' must be resolved before approval.'))
