@@ -131,12 +131,7 @@
                   React.createElement('td', null,
                     d.status === 'failed' ? React.createElement('span', { className: 'dbk-issuechip' }, React.createElement(Icons.Alert, { w: 12 }), 'Failed')
                       : issues > 0 ? React.createElement('span', { className: 'dbk-issuechip' }, React.createElement(Icons.Alert, { w: 12 }), issues + ' issue' + (issues > 1 ? 's' : ''))
-                        : React.createElement('span', { className: 'dbk-okchip' }, React.createElement(Icons.Check, { w: 12 }), 'Clean'),
-                    d.ocr_provider && d.ocr_provider.includes('fallback') && React.createElement('span', {
-                      className: 'dbk-issuechip',
-                      title: 'LLM OCR failed — data extracted by mock fallback',
-                      style: { marginLeft: 4, background: '#fffbeb', color: '#92400e', border: '1px solid #fcd34d' },
-                    }, React.createElement(Icons.Alert, { w: 12 }), 'Mock fallback')),
+                        : React.createElement('span', { className: 'dbk-okchip' }, React.createElement(Icons.Check, { w: 12 }), 'Clean')),
                   React.createElement('td', { style: { color: 'var(--text-muted)' } }, C.ago(d.updated_at)),
                   React.createElement('td', { onClick: (e) => e.stopPropagation() },
                     React.createElement(Button, { variant: 'ghost', size: 'sm', iconRight: React.createElement(Icons.Chevron, { w: 14 }), onClick: () => go('review', { docId: d.document_id }) }, 'Review')));
@@ -291,7 +286,7 @@
   function Settings() {
     const store = useStore();
     const confirm = useConfirm();
-    const DEFAULT = { provider: 'mock', openaiKey: '', geminiKey: '', openaiModel: 'gpt-5.4-mini', geminiModel: 'gemini-3.5-flash' };
+    const DEFAULT = { provider: 'gemini', openaiKey: '', geminiKey: '', openaiModel: 'gpt-5.4-mini', geminiModel: 'gemini-3.5-flash' };
     const [local, setLocal] = React.useState({ ...DEFAULT, ...(store.settings || {}) });
     const [saving, setSaving] = React.useState(false);
     const [testing, setTesting] = React.useState(false);
@@ -315,7 +310,7 @@
       setTestResult(result);
       setTesting(false);
     };
-    const reset = async () => { if (await confirm({ title: 'Reset demo data?', body: 'Clears your local IndexedDB and restores the seeded sample batches. Any documents you uploaded will be lost.', danger: true, confirmLabel: 'Reset' })) store.resetDemo(); };
+    const reset = async () => { if (await confirm({ title: 'Clear all data?', body: 'Permanently deletes every batch and document from your local IndexedDB. This cannot be undone.', danger: true, confirmLabel: 'Clear all' })) store.resetDemo(); };
 
     const rules = [
       ['Document number is required', 'document_no must not be empty', 'error'],
@@ -339,9 +334,8 @@
               React.createElement('div', { style: { width: 210 } },
                 React.createElement(Select, { size: 'sm', value: local.provider, onChange: (e) => set('provider', e.target.value),
                   options: [
-                    { value: 'mock', label: 'Mock OCR (demo)' },
-                    { value: 'openai', label: 'OpenAI' },
                     { value: 'gemini', label: 'Google Gemini' },
+                    { value: 'openai', label: 'OpenAI' },
                   ] }))),
 
             local.provider === 'openai' && React.createElement('div', { className: 'db-set-row', style: { flexDirection: 'column', alignItems: 'flex-start', gap: 8 } },
@@ -368,7 +362,7 @@
               React.createElement(StatusBadge, { status: 'approved' })),
 
             React.createElement('div', { style: { padding: '8px 16px 12px', display: 'flex', justifyContent: 'flex-end', gap: 8 } },
-              local.provider !== 'mock' && React.createElement(Button, { size: 'sm', variant: 'secondary', disabled: testing, onClick: testConn }, testing ? 'Testing…' : 'Test connection'),
+              React.createElement(Button, { size: 'sm', variant: 'secondary', disabled: testing, onClick: testConn }, testing ? 'Testing…' : 'Test connection'),
               React.createElement(Button, { size: 'sm', disabled: saving, onClick: saveSettings }, saving ? 'Saving…' : 'Save provider settings'))),
 
           React.createElement(Card, { title: 'Local storage', flush: true },
@@ -376,7 +370,7 @@
               React.createElement('div', { className: 'db-set-row__main' },
                 React.createElement('b', null, 'IndexedDB'),
                 React.createElement('span', null, store.documents.length + ' documents · ' + store.batches.length + ' batches')),
-              React.createElement(Button, { variant: 'danger-soft', size: 'sm', iconLeft: React.createElement(Icons.Refresh, { w: 15 }), onClick: reset }, 'Reset demo data')))),
+              React.createElement(Button, { variant: 'danger-soft', size: 'sm', iconLeft: React.createElement(Icons.Refresh, { w: 15 }), onClick: reset }, 'Clear all data')))),
 
         React.createElement(Card, { title: 'Validation rules', flush: true },
           rules.map((r, i) => React.createElement('div', { key: i, className: 'db-rule' },

@@ -242,17 +242,11 @@
           h('span', { className: 'dbk-wb-file dbk-mono' }, doc.file_name)),
         h(StatusBadge, { status: liveStatus }),
         h(ConfidenceBadge, { score: doc.confidence, showPercent: true }),
-        isReal && (function () {
-          const src = doc.ocr_provider || 'mock';
-          const fail = !!doc._llm_error;
-          const isMock = src.indexOf('mock') === 0;
-          return h('span', {
-            title: doc._llm_error || ('Extracted by: ' + src),
-            style: { fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 5, whiteSpace: 'nowrap',
-              background: fail ? '#fef2f2' : isMock ? '#f1f5f9' : '#f0fdf4',
-              color: fail ? '#dc2626' : isMock ? '#64748b' : '#15803d' },
-          }, fail ? '⚠ Mock (LLM failed — hover)' : 'OCR: ' + src);
-        })(),
+        isReal && doc.ocr_provider && h('span', {
+          title: 'Extracted by: ' + doc.ocr_provider,
+          style: { fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 5, whiteSpace: 'nowrap',
+            background: '#f0fdf4', color: '#15803d' },
+        }, 'OCR: ' + doc.ocr_provider),
         h('span', { className: 'grow' }),
         dirty && h('span', { style: { fontSize: 12, color: 'var(--amber-700)', fontWeight: 600 } }, 'Unsaved changes'),
         isReal && h(Button, { variant: 'secondary', size: 'sm', iconLeft: h(Icons.Refresh, { w: 15 }), disabled: reprocessing, onClick: reprocess }, reprocessing ? 'Reprocessing…' : 'Reprocess OCR'),
@@ -283,7 +277,7 @@
             h('div', { className: 'dbk-paperwrap' },
               h('div', { className: 'dbk-paper', style: { transform: `scale(${zoom}) rotate(${rotate}deg)` } },
                 isReal ? h(RealDoc, { doc, page, active, showBoxes }) : h(FaxPage, { doc, page, active, showBoxes }),
-                isReal && !doc.fields.some((f) => f.grounded) && h('div', { className: 'db-realnote' }, '⚠ 框为示例坐标(Mock)— 切换 Settings 到 Gemini 并 Reprocess 才有真实定位'))))),
+                isReal && !doc.fields.some((f) => f.grounded) && h('div', { className: 'db-realnote' }, '⚠ 框为版面估算坐标 — Gemini 返回真实坐标后会自动定位到原文位置'))))),
 
         // extraction panel
         h('div', { className: 'dbk-panel' },
@@ -349,7 +343,7 @@
                       s.name && h('div', { className: 'dbk-mono', style: { fontSize: 12, fontWeight: 600 } }, s.name),
                       h('div', { style: { fontSize: 12, color: 'var(--text-muted)' } }, s.summary || '—')))),
               h('div', { style: { fontSize: 11, color: 'var(--text-muted)', marginTop: 10, paddingTop: 8, borderTop: '1px solid var(--border)' } },
-                'Steps stream from the agrun agent loop during extraction. Documents extracted via the mock/direct path show a single explanatory row.')),
+                'Steps stream from the agrun agent loop during extraction. Documents extracted via the direct-provider fallback path show a single explanatory row.')),
 
           errs.length > 0
             ? h('div', { className: 'dbk-panel-foot' }, h(Icons.Alert, { w: 15 }), h('span', null, errs.length + ' error' + (errs.length > 1 ? 's' : '') + ' must be resolved before approval.'))

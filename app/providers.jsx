@@ -1,4 +1,4 @@
-/* DocuBridge AI — LLM provider adapters (OpenAI + Gemini + Mock fallback).
+/* DocuBridge AI — LLM provider adapters (OpenAI + Gemini, real providers only).
    BYOK: user supplies their own API key in Settings. Key never leaves the browser.
    Exposes window.LLMProviders = { ocrExtractWithFallback, testConnection } */
 (function () {
@@ -286,35 +286,23 @@
     return C.makeDoc(llmToMakeDocOpts(result, type, batchId, f.name));
   }
 
-  // ---------- mock adapter — wraps existing C.mockOCR ----------
-  function mockAdapter(f, type, batchId, seq) {
-    return C.mockOCR(f.name, type, batchId, seq);
-  }
-
-  // ---------- main entry point with fallback chain ----------
+  // ---------- main entry point (real providers only — no mock fallback) ----------
+  // On any failure this THROWS; callers mark the document failed with the message.
   async function ocrExtractWithFallback(f, type, batchId, seq, settings) {
-    const { provider = 'mock', openaiKey = '', geminiKey = '', openaiModel, geminiModel } = settings || {};
-    if (provider === 'mock') { const d = mockAdapter(f, type, batchId, seq); d.ocr_provider = 'mock'; return d; }
-    try {
-      let d;
-      if (provider === 'openai') d = await openaiAdapter(f, type, batchId, seq, openaiKey, openaiModel);
-      else if (provider === 'gemini') d = await geminiAdapter(f, type, batchId, seq, geminiKey, geminiModel);
-      else d = mockAdapter(f, type, batchId, seq);
-      d.ocr_provider = provider === 'openai' ? 'openai (' + (openaiModel || 'gpt-5.4-mini') + ')'
-        : provider === 'gemini' ? 'gemini (' + (geminiModel || 'gemini-3.5-flash') + ')' : 'mock';
-      return d;
-    } catch (err) {
-      console.warn('[LLMProviders]', provider, 'failed — falling back to mock:', err.message);
-      const doc = mockAdapter(f, type, batchId, seq);
-      doc.ocr_provider = 'mock (fallback)';
-      doc._llm_error = err.message;
-      return doc;
-    }
+    const { provider = 'gemini', openaiKey = '', geminiKey = '', openaiModel, geminiModel } = settings || {};
+    const key = provider === 'openai' ? openaiKey : geminiKey;
+    if (!key || !String(key).trim()) throw new Error('No API key for ' + provider + ' — add one in Settings.');
+    let d;
+    if (provider === 'openai') d = await openaiAdapter(f, type, batchId, seq, openaiKey, openaiModel);
+    else if (provider === 'gemini') d = await geminiAdapter(f, type, batchId, seq, geminiKey, geminiModel);
+    else throw new Error('Unknown provider: ' + provider);
+    d.ocr_provider = provider === 'openai' ? 'openai (' + (openaiModel || 'gpt-5.4-mini') + ')'
+      : 'gemini (' + (geminiModel || 'gemini-3.5-flash') + ')';
+    return d;
   }
 
   // ---------- Test connection — send a minimal prompt, return { ok, message } ----------
   async function testConnection(provider, apiKey, model) {
-    if (provider === 'mock') return { ok: true, message: 'Mock OCR — no API needed' };
     try {
       if (provider === 'openai') {
         if (!apiKey) return { ok: false, message: 'API key is empty' };

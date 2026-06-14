@@ -1,5 +1,6 @@
-/* DocuBridge AI — data core: document-type schemas, evidence layouts, a mock OCR
-   engine, the business-validation rules, and seed sample documents.
+/* DocuBridge AI — data core: document-type schemas, evidence layouts, and the
+   business-validation rules. Extraction is provided by real LLM providers only
+   (see providers.jsx); there is no mock OCR engine or seed sample data.
    Pure logic, exported to window.DocCore. No React here. */
 (function () {
   // ---------- small helpers ----------
@@ -233,7 +234,7 @@
     const layout = LAYOUTS[opts.type];
     const fields = layout.fields.map((lf) => ({
       ...lf, value: opts.values[lf.key] != null ? opts.values[lf.key] : '',
-      // AI-grounded box (from LLM) overrides the mock layout box when present
+      // AI-grounded box (from LLM) overrides the default layout box when present
       box: (opts.boxes && opts.boxes[lf.key]) ? opts.boxes[lf.key] : lf.box,
       grounded: !!(opts.boxes && opts.boxes[lf.key]),
       confidence: opts.conf && opts.conf[lf.key] != null ? opts.conf[lf.key] : 0.92,
@@ -247,7 +248,7 @@
       document_type: opts.type,
       document_no: opts.values.document_no || '—',
       page_count: layout.pages.length,
-      is_sample: true,
+      is_sample: false,
       file_blob: null,
       letterhead: { ...layout.letterhead, company: opts.company, address: opts.address, subtitle: t.label },
       pages: layout.pages.map((p) => ({ ...p, conf: p.no === 1 ? 0.86 : 0.7 })),
@@ -273,176 +274,8 @@
     return doc;
   }
 
-  // ---------- mock OCR for user-uploaded files ----------
-  const VENDORS = [
-    { c: 'Nordic Components AB', a: '14 Industrivägen, Malmö' },
-    { c: 'Orient Trading Co', a: '5 Kallang Way, Singapore' },
-    { c: 'Pacific Hardware Ltd', a: '88 Jurong East St 21' },
-    { c: 'Summit Logistics', a: '3 Changi North Cres' },
-  ];
-  const PARTS = [
-    ['STK-4471', 'M8 Hex Bolt, Zinc', 0.42, 'pcs'], ['STK-4490', 'M8 Hex Nut, Zinc', 0.18, 'pcs'],
-    ['STK-7732', 'Flat Washer 8mm', 0.06, 'pcs'], ['STK-1180', 'Threadlock 50ml', 7.5, 'btl'],
-    ['STK-2210', 'Steel Bracket L-90', 1.85, 'pcs'], ['STK-9004', 'Cable Tie 200mm', 0.03, 'pcs'],
-    ['STK-5521', 'Safety Gloves L', 2.4, 'pr'], ['STK-3340', 'Masking Tape 24mm', 1.1, 'roll'],
-  ];
-  const rnd = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
-  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
-
-  function mockOCR(file, type, batchId, seq) {
-    const t = TYPES[type];
-    // ~8% of uploads "fail" to demonstrate the failed-docs flow
-    if (Math.random() < 0.08) {
-      return makeDoc({ type, batch_id: batchId, file, company: '', address: '', values: {}, lineItems: [], totals: null,
-        status: 'failed', fail_reason: pick(['Unsupported encoding — page could not be rasterised', 'Image too low resolution for OCR', 'Password-protected PDF']) });
-    }
-    const v = pick(VENDORS);
-    const nItems = rnd(2, 4);
-    const items = [];
-    for (let i = 0; i < nItems; i++) {
-      const [code, desc, price, uom] = pick(PARTS);
-      const qty = rnd(10, 800);
-      const conf = Math.random() < 0.25 ? +(0.5 + Math.random() * 0.18).toFixed(2) : +(0.82 + Math.random() * 0.17).toFixed(2);
-      // occasionally a wrong line total to trigger validation
-      const glitch = Math.random() < 0.18;
-      const total = +(qty * price * (glitch ? 1.1 : 1)).toFixed(2);
-      items.push({ serial_no: String(i + 1), stock_code: code, description: desc, remark: '', quantity: qty, uom, unit_price: price, total_price: total, confidence: conf });
-    }
-    const subtotal = +items.reduce((s, li) => s + li.quantity * li.unit_price, 0).toFixed(2);
-    const gst = +(subtotal * 0.09).toFixed(2);
-    // occasionally a wrong grand total
-    const grand = Math.random() < 0.25 ? +(subtotal + gst + rnd(50, 400)).toFixed(2) : +(subtotal + gst).toFixed(2);
-    const docNo = t.prefix + '-2024-' + (4600 + seq);
-    const lowField = () => +(0.55 + Math.random() * 0.4).toFixed(2);
-    const values = {
-      document_no: docNo, transaction_date: '2024-06-' + String(rnd(1, 28)).padStart(2, '0'),
-      credit_term: pick(['30 days', '45 days', 'COD', '60 days']), payment_terms: pick(['Net 30', 'Net 45', 'Net 14']),
-      bill_to: 'Acme Manufacturing Pte Ltd\nAccounts Dept, 12 Tuas Ave 3', supplier: v.c + '\n' + v.a,
-      ship_to: 'Acme Warehouse\n12 Tuas Avenue 3, Singapore', customer: 'Acme Manufacturing Pte Ltd\n12 Tuas Ave 3',
-      subtotal: money(subtotal), gst: money(gst), grand_total: money(grand),
-    };
-    const conf = {};
-    LAYOUTS[type].fields.forEach((f) => { conf[f.key] = lowField(); });
-    const doc = makeDoc({ type, batch_id: batchId, file, company: v.c, address: v.a, values, conf,
-      lineItems: items, totals: { subtotal, gst, grand }, status: 'need_review' });
-    doc.is_sample = false;
-    return doc;
-  }
-
-  // ---------- seed data (first run) ----------
-  function seed() {
-    const batches = [];
-    const docs = [];
-    const t0 = now();
-
-    // Batch 1 — June Purchase Orders (the hero batch, mixed statuses)
-    const b1 = { batch_id: 'b_june_po', batch_name: 'June Purchase Orders', document_type: 'purchase_order',
-      status: 'need_review', total_files: 6, owner: 'Aishah Tan', created_at: t0 - 4 * 60000, updated_at: t0 - 4 * 60000 };
-    batches.push(b1);
-
-    // hero PO — totals intentionally wrong to trigger validation
-    docs.push(makeDoc({
-      id: 'doc_hero', batch_id: b1.batch_id, type: 'purchase_order', file: 'po_acme_0512.pdf',
-      company: 'ACME MANUFACTURING PTE LTD', address: '12 Tuas Avenue 3 · Singapore 639271',
-      values: {
-        document_title: 'Hardware Procurement — June 2024',
-        document_no: 'PO-2024-0512', transaction_date: '2024-06-12', credit_term: '30 days',
-        bill_to: 'Acme Manufacturing Pte Ltd\nAccounts Dept, 12 Tuas Ave 3',
-        ship_to: 'Acme Warehouse\n12 Tuas Avenue 3, Singapore',
-        delivery_address: '12 Tuas Avenue 3, Singapore 639271\nWarehouse Gate B',
-        subtotal: '444.00', gst: '31.08', grand_total: '1,284.00',
-        terms_and_conditions: 'Payment due within 30 days of invoice date. Goods received subject to quality inspection. Returns accepted within 14 days with prior written approval.',
-      },
-      conf: { document_no: 0.96, transaction_date: 0.82, credit_term: 0.74, bill_to: 0.9, ship_to: 0.69, subtotal: 0.9, gst: 0.88, grand_total: 0.61 },
-      lineItems: [
-        { serial_no: '1', stock_code: 'STK-4471', description: 'M8 Hex Bolt, Zinc', remark: '', quantity: 500, uom: 'pcs', unit_price: 0.42, total_price: 210.0, confidence: 0.93 },
-        { serial_no: '2', stock_code: 'STK-4490', description: 'M8 Hex Nut, Zinc', remark: '', quantity: 500, uom: 'pcs', unit_price: 0.18, total_price: 90.0, confidence: 0.9 },
-        { serial_no: '3', stock_code: 'STK-7732', description: 'Flat Washer 8mm', remark: '', quantity: 1000, uom: 'pcs', unit_price: 0.06, total_price: 60.0, confidence: 0.55 },
-        { serial_no: '4', stock_code: 'STK-1180', description: 'Threadlock 50ml', remark: '', quantity: 12, uom: 'btl', unit_price: 7.5, total_price: 84.0, confidence: 0.61 },
-      ],
-      totals: { subtotal: 444.0, gst: 31.08, grand: 1284.0 }, confidence: 0.62, status: 'need_review', created_at: t0 - 4 * 60000,
-    }));
-
-    // a clean, ready PO
-    docs.push(makeDoc({
-      id: 'doc_clean', batch_id: b1.batch_id, type: 'purchase_order', file: 'po_acme_0513.pdf',
-      company: 'ACME MANUFACTURING PTE LTD', address: '12 Tuas Avenue 3 · Singapore 639271',
-      values: {
-        document_no: 'PO-2024-0513', transaction_date: '2024-06-12', credit_term: '30 days',
-        bill_to: 'Acme Manufacturing Pte Ltd\nAccounts Dept, 12 Tuas Ave 3',
-        ship_to: 'Acme Warehouse\n12 Tuas Avenue 3, Singapore', subtotal: '370.00', gst: '33.30', grand_total: '403.30',
-      },
-      conf: { document_no: 0.97, transaction_date: 0.95, credit_term: 0.93, bill_to: 0.96, ship_to: 0.94, subtotal: 0.95, gst: 0.94, grand_total: 0.96 },
-      lineItems: [{ serial_no: '1', stock_code: 'STK-2210', description: 'Steel Bracket L-90', remark: '', quantity: 200, uom: 'pcs', unit_price: 1.85, total_price: 370.0, confidence: 0.95 }],
-      totals: { subtotal: 370.0, gst: 33.3, grand: 403.3 }, confidence: 0.94, status: 'ready', created_at: t0 - 6 * 60000,
-    }));
-
-    // a couple more need-review POs (lighter)
-    [['PO-2024-0514', 'po_nordic_0514.pdf', 'Nordic Components AB', 0.88],
-     ['PO-2024-0515', 'po_acme_0515.jpg', 'Pacific Hardware Ltd', 0.71]].forEach(([no, file, co, cf], i) => {
-      const items = [{ serial_no: '1', stock_code: 'STK-9004', description: 'Cable Tie 200mm', remark: '', quantity: 5000, uom: 'pcs', unit_price: 0.03, total_price: 150.0, confidence: cf },
-        { serial_no: '2', stock_code: 'STK-3340', description: 'Masking Tape 24mm', remark: '', quantity: 80, uom: 'roll', unit_price: 1.1, total_price: 88.0, confidence: cf + 0.05 }];
-      const sub = 238.0, gst = +(sub * 0.09).toFixed(2);
-      docs.push(makeDoc({ batch_id: b1.batch_id, type: 'purchase_order', file, company: co, address: '—',
-        values: { document_no: no, transaction_date: '2024-06-1' + (i + 3), credit_term: '45 days',
-          bill_to: 'Acme Manufacturing Pte Ltd\n12 Tuas Ave 3', ship_to: 'Acme Warehouse\n12 Tuas Ave 3',
-          subtotal: money(sub), gst: money(gst), grand_total: money(sub + gst) },
-        conf: { document_no: cf, transaction_date: cf, credit_term: cf - 0.1, bill_to: cf, ship_to: cf - 0.05, subtotal: cf, gst: cf, grand_total: cf },
-        lineItems: items, totals: { subtotal: sub, gst, grand: +(sub + gst).toFixed(2) }, confidence: cf, status: 'need_review', created_at: t0 - (8 + i) * 60000 }));
-    });
-
-    // a failed scan
-    docs.push(makeDoc({ batch_id: b1.batch_id, type: 'purchase_order', file: 'scan_0516.jpg', company: '', address: '',
-      values: {}, conf: {}, lineItems: [], totals: null, status: 'failed', confidence: 0,
-      fail_reason: 'Image too low resolution for OCR — text could not be located', created_at: t0 - 12 * 60000 }));
-
-    // Batch 2 — Invoices
-    const b2 = { batch_id: 'b_invoices', batch_name: 'Q2 Supplier Invoices', document_type: 'invoice',
-      status: 'need_review', total_files: 2, owner: 'Marcus Lee', created_at: t0 - 30 * 60000, updated_at: t0 - 12 * 60000 };
-    batches.push(b2);
-    docs.push(makeDoc({
-      id: 'doc_inv', batch_id: b2.batch_id, type: 'invoice', file: 'inv_nordic_8841.pdf',
-      company: 'NORDIC COMPONENTS AB', address: '14 Industrivägen · Malmö, Sweden',
-      values: { document_no: 'INV-8841', transaction_date: '2024-06-09', payment_terms: 'Net 30',
-        supplier: 'Nordic Components AB\n14 Industrivägen, Malmö', customer: 'Acme Manufacturing Pte Ltd\n12 Tuas Ave 3',
-        subtotal: '1,110.00', gst: '99.90', grand_total: '1,209.90' },
-      conf: { document_no: 0.93, transaction_date: 0.88, payment_terms: 0.8, supplier: 0.91, customer: 0.86, subtotal: 0.9, gst: 0.9, grand_total: 0.9 },
-      lineItems: [{ serial_no: '1', stock_code: 'STK-2210', description: 'Steel Bracket L-90', remark: '', quantity: 600, uom: 'pcs', unit_price: 1.85, total_price: 1110.0, confidence: 0.9 }],
-      totals: { subtotal: 1110.0, gst: 99.9, grand: 1209.9 }, confidence: 0.89, status: 'need_review', created_at: t0 - 12 * 60000,
-    }));
-    docs.push(makeDoc({ batch_id: b2.batch_id, type: 'invoice', file: 'inv_orient_8842.pdf', company: 'ORIENT TRADING CO', address: '5 Kallang Way',
-      values: { document_no: 'INV-8842', transaction_date: '2024-06-10', payment_terms: 'Net 45',
-        supplier: 'Orient Trading Co\n5 Kallang Way', customer: 'Acme Manufacturing Pte Ltd\n12 Tuas Ave 3',
-        subtotal: '540.00', gst: '48.60', grand_total: '588.60' },
-      conf: { document_no: 0.96, transaction_date: 0.94, payment_terms: 0.92, supplier: 0.95, customer: 0.93, subtotal: 0.96, gst: 0.95, grand_total: 0.96 },
-      lineItems: [{ serial_no: '1', stock_code: 'STK-5521', description: 'Safety Gloves L', remark: '', quantity: 225, uom: 'pr', unit_price: 2.4, total_price: 540.0, confidence: 0.95 }],
-      totals: { subtotal: 540.0, gst: 48.6, grand: 588.6 }, confidence: 0.95, status: 'ready', created_at: t0 - 20 * 60000 }));
-
-    // Batch 3 — Delivery Orders (already approved)
-    const b3 = { batch_id: 'b_do', batch_name: 'Warehouse Delivery Orders', document_type: 'delivery_order',
-      status: 'approved', total_files: 2, owner: 'Siti Wong', created_at: t0 - 200 * 60000, updated_at: t0 - 120 * 60000 };
-    batches.push(b3);
-    docs.push(makeDoc({
-      id: 'doc_do', batch_id: b3.batch_id, type: 'delivery_order', file: 'do_summit_2207.pdf',
-      company: 'SUMMIT LOGISTICS', address: '3 Changi North Crescent',
-      values: { document_no: 'DO-2207', transaction_date: '2024-06-08',
-        customer: 'Acme Manufacturing Pte Ltd\n12 Tuas Ave 3', ship_to: 'Acme Warehouse\nGate 4, 12 Tuas Ave 3' },
-      conf: { document_no: 0.95, transaction_date: 0.93, customer: 0.94, ship_to: 0.92 },
-      lineItems: [{ serial_no: '1', stock_code: 'STK-2210', description: 'Steel Bracket L-90', remark: 'Pallet A1', quantity: 600, uom: 'pcs', confidence: 0.95 },
-        { serial_no: '2', stock_code: 'STK-5521', description: 'Safety Gloves L', remark: 'Pallet A2', quantity: 225, uom: 'pr', confidence: 0.93 }],
-      status: 'approved', approved_by: 'Siti Wong', approved_at: t0 - 120 * 60000, confidence: 0.94, created_at: t0 - 200 * 60000,
-    }));
-    docs.push(makeDoc({ batch_id: b3.batch_id, type: 'delivery_order', file: 'do_summit_2208.pdf', company: 'SUMMIT LOGISTICS', address: '3 Changi North Crescent',
-      values: { document_no: 'DO-2208', transaction_date: '2024-06-08', customer: 'Acme Manufacturing Pte Ltd\n12 Tuas Ave 3', ship_to: 'Acme Warehouse\nGate 4' },
-      conf: { document_no: 0.97, transaction_date: 0.96, customer: 0.95, ship_to: 0.94 },
-      lineItems: [{ serial_no: '1', stock_code: 'STK-9004', description: 'Cable Tie 200mm', remark: 'Box 1', quantity: 5000, uom: 'pcs', confidence: 0.96 }],
-      status: 'submitted', approved_by: 'Siti Wong', approved_at: t0 - 130 * 60000, confidence: 0.96, created_at: t0 - 205 * 60000 }));
-
-    return { batches, documents: docs };
-  }
-
   window.DocCore = {
     TYPES, LAYOUTS, typeFromLabel, uid, now, money, num, hasNum, confLevel, ago, avg,
-    validate, deriveStatus, docConfidence, fieldMap, toJSON, makeDoc, mockOCR, seed,
+    validate, deriveStatus, docConfidence, fieldMap, toJSON, makeDoc,
   };
 })();
