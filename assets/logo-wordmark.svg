@@ -1,0 +1,7 @@
+<svg width="248" height="56" viewBox="0 0 248 56" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="DocuBridge AI">
+  <rect x="4" y="8" width="40" height="40" rx="10" fill="#2D6CDF"></rect>
+  <path d="M16.5 18.5h9.5l6 6v14.5a1.8 1.8 0 0 1-1.8 1.8H16.5a1.8 1.8 0 0 1-1.8-1.8V20.3a1.8 1.8 0 0 1 1.8-1.8Z" fill="#FFFFFF"></path>
+  <path d="M26 18.5v5.2a1 1 0 0 0 1 1h5" fill="#DBE7FE"></path>
+  <path d="M19.6 33.4l2.7 2.7 6.2-6.2" stroke="#2D6CDF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path>
+  <text x="56" y="35" font-family="&#39;IBM Plex Sans&#39;, sans-serif" font-size="20" font-weight="700" letter-spacing="-0.3" fill="#0F1B2D">DocuBridge<tspan fill="#2D6CDF"> AI</tspan></text>
+</svg>

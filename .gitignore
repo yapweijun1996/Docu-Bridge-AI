@@ -1,0 +1,12 @@
+# OS noise
+.DS_Store
+**/.DS_Store
+
+# Claude Code session data
+.claude/
+
+# A copy of another project that was placed here — pending deletion, do not version
+Sample/
+
+# Node (none currently, but guard against accidental installs)
+node_modules/

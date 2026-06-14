@@ -1,0 +1,18 @@
+<svg width="96" height="96" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="DocuBridge AI">
+  <rect width="96" height="96" rx="22" fill="#2D6CDF"></rect>
+  <rect width="96" height="96" rx="22" fill="url(#dbg)" fill-opacity="0.16"></rect>
+  
+  <path d="M30 24h22l14 14v34a4 4 0 0 1-4 4H30a4 4 0 0 1-4-4V28a4 4 0 0 1 4-4Z" fill="#FFFFFF"></path>
+  <path d="M52 24v12a2 2 0 0 0 2 2h12" fill="#DBE7FE"></path>
+  
+  <path d="M37 60l6 6 14-14" stroke="#2D6CDF" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"></path>
+  <circle cx="37" cy="44" r="3" fill="#93B4FA"></circle>
+  <circle cx="49" cy="44" r="3" fill="#93B4FA"></circle>
+  <path d="M40 44h6" stroke="#93B4FA" stroke-width="2.5" stroke-linecap="round"></path>
+  <defs>
+    <linearGradient id="dbg" x1="0" y1="0" x2="96" y2="96" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff"></stop>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"></stop>
+    </linearGradient>
+  </defs>
+</svg>

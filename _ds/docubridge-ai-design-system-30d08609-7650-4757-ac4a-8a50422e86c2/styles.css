@@ -1,0 +1,9 @@
+/* DocuBridge AI — Global stylesheet entry point.
+   Consuming projects link THIS file. Keep it as @import lines only. */
+
+@import url('./tokens/fonts.css');
+@import url('./tokens/colors.css');
+@import url('./tokens/typography.css');
+@import url('./tokens/spacing.css');
+@import url('./tokens/elevation.css');
+@import url('./tokens/base.css');
