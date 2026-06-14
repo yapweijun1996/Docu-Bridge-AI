@@ -85,6 +85,16 @@
         React.createElement('span', { className: 'grow' }),
         React.createElement('span', { className: 'dbk-resultcount' }, filtered.length + ' of ' + docs.length + ' shown')),
 
+      (function () {
+        const processing = docs.filter((d) => d.status === 'processing').length;
+        return processing > 0 && React.createElement('div', { className: 'db-status db-status--processing',
+          style: { display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 12px', padding: '10px 14px', borderRadius: 8,
+            background: 'var(--blue-50, #eff6ff)', color: 'var(--blue-700, #1d4ed8)', fontSize: 13 } },
+          React.createElement('span', { className: 'db-status__dot' }),
+          React.createElement('b', null, 'OCR in progress'),
+          React.createElement('span', null, '— ' + processing + ' document' + (processing > 1 ? 's' : '') + ' extracting. Real-provider OCR can take up to ~90s each; this list updates automatically when each finishes.'));
+      })(),
+
       selCount > 0 && React.createElement('div', { className: 'dbk-bulkbar' },
         React.createElement(Checkbox, { checked: true, indeterminate: !allOn, onChange: toggleAll, 'aria-label': 'Select all' }),
         React.createElement('b', null, selCount + ' selected'),
