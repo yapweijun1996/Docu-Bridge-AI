@@ -1,0 +1,102 @@
+/* DocuBridge AI — Color tokens
+   Calm enterprise palette: cool slate neutrals, one institutional blue primary,
+   disciplined semantic colors. Never rely on color alone — pair with text labels. */
+
+:root {
+  /* ----- Neutrals (cool slate) ----- */
+  --slate-50:  #F8FAFC;
+  --slate-100: #F1F5F9;
+  --slate-200: #E6EBF1;
+  --slate-300: #CFD8E3;
+  --slate-400: #94A3B8;
+  --slate-500: #64748B;
+  --slate-600: #475569;
+  --slate-700: #334155;
+  --slate-800: #1E293B;
+  --slate-900: #0F1B2D;
+  --white:     #FFFFFF;
+
+  /* ----- Primary — institutional blue ----- */
+  --blue-50:  #EEF4FF;
+  --blue-100: #DBE7FE;
+  --blue-200: #BFD3FD;
+  --blue-300: #93B4FA;
+  --blue-400: #5E8DF2;
+  --blue-500: #2D6CDF;  /* primary */
+  --blue-600: #1F56C2;
+  --blue-700: #1A459C;
+  --blue-800: #173A80;
+
+  /* ----- Semantic scales ----- */
+  /* Success / approved / high confidence */
+  --green-50:  #ECFDF3;
+  --green-100: #D1FADF;
+  --green-500: #16A34A;
+  --green-600: #128041;
+  --green-700: #0E6635;
+
+  /* Warning / need review / medium confidence */
+  --amber-50:  #FFF8EB;
+  --amber-100: #FDEDCB;
+  --amber-500: #D97706;
+  --amber-600: #B45F04;
+  --amber-700: #92500A;
+
+  /* Danger / failed / rejected / low confidence / errors */
+  --red-50:  #FEF2F2;
+  --red-100: #FCE0E0;
+  --red-500: #DC2626;
+  --red-600: #BB1A1A;
+  --red-700: #991616;
+
+  /* Info / processing / cyan accent */
+  --cyan-50:  #ECFBFD;
+  --cyan-100: #CFF3F8;
+  --cyan-500: #0E96B3;
+  --cyan-600: #0B7891;
+  --cyan-700: #0A6275;
+
+  /* Violet / OCR-complete accent (kept rare) */
+  --violet-50:  #F3F1FF;
+  --violet-100: #E5E0FF;
+  --violet-500: #6D5BE3;
+  --violet-600: #5746C4;
+
+  /* ============ Semantic aliases ============ */
+  /* Surfaces */
+  --surface-app:      var(--slate-100);   /* app background */
+  --surface-card:     var(--white);       /* panels, cards */
+  --surface-sunken:   var(--slate-50);    /* wells, table headers, code */
+  --surface-inset:    var(--slate-100);   /* nested wells */
+  --surface-hover:    var(--slate-50);    /* row / item hover */
+  --surface-selected: var(--blue-50);     /* selected row / nav */
+  --surface-inverse:  var(--slate-900);   /* sidebar, tooltips */
+
+  /* Text */
+  --text-strong:  var(--slate-900);   /* headings, key values */
+  --text-body:    var(--slate-700);   /* default copy */
+  --text-muted:   var(--slate-500);   /* labels, secondary */
+  --text-subtle:  var(--slate-400);   /* placeholders, meta */
+  --text-on-dark: #E4ECF6;            /* text on inverse surface */
+  --text-on-brand: var(--white);      /* text on primary */
+  --text-link:    var(--blue-600);
+
+  /* Borders */
+  --border-subtle:  var(--slate-200);
+  --border-default: var(--slate-300);
+  --border-strong:  var(--slate-400);
+  --border-focus:   var(--blue-500);
+
+  /* Brand / primary */
+  --brand:        var(--blue-500);
+  --brand-hover:  var(--blue-600);
+  --brand-active: var(--blue-700);
+  --brand-soft:   var(--blue-50);
+  --brand-ring:   color-mix(in srgb, var(--blue-500) 38%, transparent);
+
+  /* Evidence highlight (bounding box on the document) */
+  --evidence-fill:   color-mix(in srgb, var(--amber-500) 18%, transparent);
+  --evidence-border: var(--amber-500);
+  --evidence-active-fill:   color-mix(in srgb, var(--blue-500) 18%, transparent);
+  --evidence-active-border: var(--blue-500);
+}

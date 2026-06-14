@@ -1,0 +1,59 @@
+/* DocuBridge AI — Base element styles & a few helpers.
+   Light-touch: sets the typographic baseline and a couple of utility classes
+   used across cards and kits. Components carry their own styling. */
+
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  line-height: var(--leading-normal);
+  color: var(--text-body);
+  background: var(--surface-app);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4 {
+  margin: 0;
+  color: var(--text-strong);
+  font-weight: var(--fw-semibold);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
+}
+
+a { color: var(--text-link); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+code, pre, .ds-mono {
+  font-family: var(--font-mono);
+  font-feature-settings: "zero" 1; /* slashed zero for data legibility */
+}
+
+/* Uppercase eyebrow / section label */
+.ds-eyebrow {
+  font-size: var(--text-2xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* Tabular figures for any numeric column */
+.ds-tnum { font-variant-numeric: tabular-nums; }
+
+::selection { background: var(--blue-100); color: var(--text-strong); }
+
+/* Custom scrollbars — quiet, enterprise */
+* { scrollbar-width: thin; scrollbar-color: var(--slate-300) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb {
+  background: var(--slate-300);
+  border-radius: var(--radius-full);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--slate-400); background-clip: content-box; }
