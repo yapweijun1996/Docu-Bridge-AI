@@ -34,9 +34,6 @@
   }
   window.Exports = { download, exportJSON, exportCSV };
 
-  // ---------- confidence band helper ----------
-  const band = (c) => (c >= 0.9 ? 'High' : c >= 0.7 ? 'Medium' : 'Low');
-
   // ============================ shared document table ============================
   function DocTable({ docs, go, showType }) {
     const store = useStore();
@@ -44,7 +41,6 @@
     const [sel, setSel] = React.useState({});
     const [q, setQ] = React.useState('');
     const [fStatus, setFStatus] = React.useState('');
-    const [fConf, setFConf] = React.useState('');
     const [fType, setFType] = React.useState('');
 
     React.useEffect(() => { setSel({}); }, [docs.length]);
@@ -53,7 +49,6 @@
     const filtered = docs.filter((d) => {
       if (ql && !((d.document_no || '').toLowerCase().includes(ql) || (d.file_name || '').toLowerCase().includes(ql))) return false;
       if (fStatus && d.status !== fStatus) return false;
-      if (fConf && band(d.confidence) !== fConf) return false;
       if (fType && d.document_type !== fType) return false;
       return true;
     });
@@ -85,8 +80,6 @@
           React.createElement('input', { placeholder: 'Search document no or file name…', value: q, onChange: (e) => setQ(e.target.value) })),
         React.createElement(Select, { size: 'sm', value: fStatus, onChange: (e) => setFStatus(e.target.value), placeholder: 'All statuses',
           options: [{ value: '', label: 'All statuses' }, { value: 'need_review', label: 'Need Review' }, { value: 'ready', label: 'Ready to Submit' }, { value: 'approved', label: 'Approved' }, { value: 'submitted', label: 'Submitted' }, { value: 'failed', label: 'Failed' }, { value: 'rejected', label: 'Rejected' }] }),
-        React.createElement(Select, { size: 'sm', value: fConf, onChange: (e) => setFConf(e.target.value), placeholder: 'Any confidence',
-          options: [{ value: '', label: 'Any confidence' }, 'High', 'Medium', 'Low'] }),
         showType && React.createElement(Select, { size: 'sm', value: fType, onChange: (e) => setFType(e.target.value), placeholder: 'Any type',
           options: [{ value: '', label: 'Any type' }, { value: 'purchase_order', label: 'Purchase Order' }, { value: 'invoice', label: 'Invoice' }, { value: 'delivery_order', label: 'Delivery Order' }, { value: 'generic', label: 'Generic' }] }),
         React.createElement('span', { className: 'grow' }),
@@ -177,7 +170,7 @@
 
     return React.createElement('div', { className: 'dbk-page' },
       React.createElement(PageHeader, {
-        breadcrumbs: [{ label: 'Batches', href: '#', }, { label: batch.batch_name }],
+        breadcrumbs: [{ label: 'Batches', href: '#', onClick: (e) => { e.preventDefault(); go('batches'); } }, { label: batch.batch_name }],
         title: batch.batch_name,
         badge: React.createElement(StatusBadge, { status: batch.status }),
         description: docs.length + ' files · ' + C.TYPES[batch.document_type].label + ' · created by ' + batch.owner + ' · ' + C.ago(batch.updated_at),
@@ -279,6 +272,7 @@
   const GEMINI_MODELS = [
     { value: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash (GA · thinking · level low)' },
     { value: 'gemini-3-flash', label: 'Gemini 3 Flash (Preview · thinking · level low)' },
+    { value: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite (fast · thinking · level low)' },
     { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash (GA · no level control)' },
     { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro (GA · most capable)' },
   ];

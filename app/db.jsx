@@ -53,8 +53,8 @@
     doc.status = C.deriveStatus(doc);
     doc.updated_at = C.now();
     doc.pages.forEach((p) => {
-      const fc = doc.fields.filter((f) => f.page === p.no && !f.table).map((f) => f.confidence);
-      if (fc.length) p.conf = +C.avg(fc).toFixed(2);
+      const fc = doc.fields.filter((f) => f.page === p.no && !f.table && f.confidence != null).map((f) => f.confidence);
+      p.conf = fc.length ? +C.avg(fc).toFixed(2) : null;
     });
     return doc;
   }
@@ -122,6 +122,7 @@
         if (has('processing')) status = 'processing';
         else if (has('need_review')) status = 'need_review';
         else if (has('ready')) status = 'ready';
+        else if (mine.every((d) => d.status === 'failed')) status = 'failed';
         else if (mine.every((d) => ['approved', 'submitted'].includes(d.status))) status = 'approved';
         const nb = { ...b, status, total_files: mine.length, updated_at: C.now() };
         persistBatch(nb);
@@ -161,6 +162,9 @@
             if (noKey) {
               d.status = 'failed';
               d.fail_reason = 'No API key for ' + currentSettings.provider + ' — add one in Settings, then Reprocess.';
+              d.confidence = 0;
+              d.fields = (d.fields || []).map((f) => ({ ...f, value: '', confidence: 0 }));
+              d.agent_steps = [{ type: 'failed', name: '', summary: 'No API key for ' + currentSettings.provider + ' — add one in Settings, then Reprocess.' }];
               return d;
             }
             if (!f.blob) {
@@ -254,13 +258,15 @@
         const noKey = !((settings.provider === 'gemini' ? settings.geminiKey : settings.openaiKey) || '').trim();
         let fresh;
         if (noKey) {
-          fresh = { ...doc, status: 'failed', fail_reason: 'No API key for ' + settings.provider + ' — add one in Settings.', updated_at: C.now() };
+          fresh = { ...doc, status: 'failed', fail_reason: 'No API key for ' + settings.provider + ' — add one in Settings.', updated_at: C.now(),
+            agent_steps: [{ type: 'failed', name: '', summary: 'No API key for ' + settings.provider + ' — add one in Settings.' }] };
         } else if (!doc.file_blob) {
-          fresh = { ...doc, status: 'failed', fail_reason: 'No source file available to extract.', updated_at: C.now() };
+          fresh = { ...doc, status: 'failed', fail_reason: 'No source file available to extract.', updated_at: C.now(),
+            agent_steps: [{ type: 'failed', name: '', summary: 'No source file stored — re-upload the document to reprocess.' }] };
         } else {
           try {
-            fresh = await window.LLMProviders.ocrExtractWithFallback(
-              { name: doc.file_name, blob: doc.file_blob }, doc.document_type, doc.batch_id, 99, settings
+            fresh = await window.DocAgent.runDocumentAgent(
+              { name: doc.file_name, blob: doc.file_blob }, doc.document_type, doc.batch_id, 99, settings, null
             );
             fresh.document_id = doc.document_id; fresh.file_blob = doc.file_blob; fresh.created_at = doc.created_at;
             fresh.is_sample = false;
