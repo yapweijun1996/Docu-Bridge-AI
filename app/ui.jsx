@@ -115,7 +115,7 @@
             React.createElement(Icons.FileText, { w: 15 }), React.createElement('span', { className: 'db-search-row__main dbk-mono' }, d.document_no || d.file_name), React.createElement('span', { className: 'db-search-row__tag' }, C.TYPES[d.document_type].label))))),
       React.createElement('div', { className: 'dbk-topbar__right' },
         React.createElement('span', { className: 'dbk-mode' }, React.createElement('span', { className: 'dbk-mode__dot' }), 'Local Mode'),
-        React.createElement('button', { className: 'dbk-iconbtn', 'aria-label': 'Notifications', title: 'No notifications', onClick: () => {} }, React.createElement(Icons.Bell, { w: 18 })),
+        React.createElement('button', { className: 'dbk-iconbtn', 'aria-label': 'Notifications', title: 'No notifications', disabled: true, style: { opacity: 0.5, cursor: 'default' } }, React.createElement(Icons.Bell, { w: 18 })),
         React.createElement('div', { className: 'dbk-user', style: { cursor: 'default' } },
           React.createElement('div', { className: 'dbk-avatar' }, 'AT'),
           React.createElement('div', { className: 'dbk-user__meta' }, React.createElement('b', null, 'Aishah Tan'), React.createElement('span', null, 'Finance · Reviewer')))));
