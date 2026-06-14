@@ -136,6 +136,8 @@ function ConfidenceBadge({
   ...rest
 }) {
   inject();
+  // No real confidence to show → render nothing (don't default to a misleading "High").
+  if (level == null && score == null) return null;
   const lvl = level || (score != null ? levelFromScore(score) : 'high');
   const [bg, fg, bars, label] = LEVELS[lvl];
   const pct = score != null ? Math.round(score <= 1 ? score * 100 : score) : null;

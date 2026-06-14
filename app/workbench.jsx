@@ -129,11 +129,10 @@
           h('th', { style: { width: 46 } }, 'UOM'),
           hasPrices && h('th', { className: 'num', style: { width: 70 } }, 'Price'),
           hasPrices && h('th', { className: 'num', style: { width: 80 } }, 'Total'),
-          h('th', { style: { width: 56 } }, 'Conf.'),
           h('th', { className: 'act' }))),
         h('tbody', null, doc.line_items.map((li, i) => {
           const mismatch = hasPrices && Math.abs(C.num(li.quantity) * C.num(li.unit_price) - C.num(li.total_price)) > 0.01;
-          return h('tr', { key: i, className: C.num(li.confidence) < 0.7 ? 'is-low' : '' },
+          return h('tr', { key: i, className: mismatch ? 'is-low' : '' },
             h('td', { className: 'dbk-mono' }, i + 1),
             h('td', null,
               cell(li.description, (v) => onPatch(i, 'description', v)),
@@ -142,7 +141,6 @@
             h('td', null, cell(li.uom, (v) => onPatch(i, 'uom', v))),
             hasPrices && h('td', { className: 'num' }, cell(li.unit_price, (v) => onPatch(i, 'unit_price', v))),
             hasPrices && h('td', { className: 'num' }, cell(li.total_price, (v) => onPatch(i, 'total_price', v), { style: mismatch ? { color: 'var(--red-600)', fontWeight: 600 } : null })),
-            h('td', null, h(ConfidenceBadge, { score: C.num(li.confidence), showLabel: false, showPercent: true, plain: true })),
             h('td', { className: 'act' }, h('button', { className: 'dbk-li-del', 'aria-label': 'Delete row', onClick: () => onDelete(i) }, h(Icons.Trash, { w: 14 }))));
         }))),
       h('button', { className: 'dbk-li-add', onClick: onAdd }, h(Icons.Plus, { w: 14 }), 'Add row'));
@@ -243,16 +241,16 @@
         h(StatusBadge, { status: liveStatus }),
         h(ConfidenceBadge, { score: doc.confidence, showPercent: true }),
         isReal && doc.ocr_provider && h('span', {
-          title: 'Extracted by: ' + doc.ocr_provider,
+          title: 'Model used at extraction time (not current settings)',
           style: { fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 5, whiteSpace: 'nowrap',
             background: '#f0fdf4', color: '#15803d' },
-        }, 'OCR: ' + doc.ocr_provider),
+        }, 'Extracted with: ' + doc.ocr_provider),
         h('span', { className: 'grow' }),
         dirty && h('span', { style: { fontSize: 12, color: 'var(--amber-700)', fontWeight: 600 } }, 'Unsaved changes'),
         isReal && h(Button, { variant: 'secondary', size: 'sm', iconLeft: h(Icons.Refresh, { w: 15 }), disabled: reprocessing, onClick: reprocess }, reprocessing ? 'Reprocessing…' : 'Reprocess OCR'),
-        h(Button, { variant: 'secondary', size: 'sm', iconLeft: h(Icons.Save, { w: 15 }), disabled: !dirty, onClick: save }, 'Save draft'),
-        h(Button, { variant: 'danger-soft', size: 'sm', onClick: reject }, 'Reject'),
-        h(Button, { size: 'sm', iconLeft: h(Icons.Approved, { w: 15 }), onClick: approve }, 'Approve')),
+        h(Button, { variant: 'secondary', size: 'sm', iconLeft: h(Icons.Save, { w: 15 }), disabled: !dirty || doc.status === 'failed', onClick: save }, 'Save draft'),
+        h(Button, { variant: 'danger-soft', size: 'sm', disabled: doc.status === 'failed', onClick: reject }, 'Reject'),
+        h(Button, { size: 'sm', iconLeft: h(Icons.Approved, { w: 15 }), disabled: doc.status === 'failed', onClick: approve }, 'Approve')),
 
       h('div', { className: 'dbk-wb-body' },
         // page rail
@@ -277,7 +275,7 @@
             h('div', { className: 'dbk-paperwrap' },
               h('div', { className: 'dbk-paper', style: { transform: `scale(${zoom}) rotate(${rotate}deg)` } },
                 isReal ? h(RealDoc, { doc, page, active, showBoxes }) : h(FaxPage, { doc, page, active, showBoxes }),
-                isReal && !doc.fields.some((f) => f.grounded) && h('div', { className: 'db-realnote' }, '⚠ 框为版面估算坐标 — Gemini 返回真实坐标后会自动定位到原文位置'))))),
+                isReal && !doc.fields.some((f) => f.grounded) && h('div', { className: 'db-realnote' }, '⚠ Box positions are layout estimates — they will update to exact AI-grounded positions after successful OCR.'))))),
 
         // extraction panel
         h('div', { className: 'dbk-panel' },
@@ -305,7 +303,11 @@
               }))),
 
             tab === 'lines' && h('div', { className: 'dbk-fieldgroup' },
-              h('div', { className: 'dbk-fg-label' }, doc.line_items.length + ' line items' + (doc.line_items.filter((li) => C.num(li.confidence) < 0.7).length ? ' · ' + doc.line_items.filter((li) => C.num(li.confidence) < 0.7).length + ' low-confidence' : '')),
+              h('div', { className: 'dbk-fg-label' }, (function () {
+                const mism = C.TYPES[doc.document_type].hasPrices
+                  ? doc.line_items.filter((li) => Math.abs(C.num(li.quantity) * C.num(li.unit_price) - C.num(li.total_price)) > 0.01).length : 0;
+                return doc.line_items.length + ' line items' + (mism ? ' · ' + mism + ' total mismatch' : '');
+              })()),
               h(LineItemGrid, { doc, onPatch: patchLine, onAdd: addLine, onDelete: delLine })),
 
             tab === 'validate' && h('div', { className: 'dbk-fieldgroup dbk-validate' },

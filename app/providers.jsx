@@ -179,8 +179,10 @@
   // variant key names (no/total/qty/buyer/seller…), so we alias common synonyms.
   function llmToMakeDocOpts(result, type, batchId, fileName) {
     const pick = (...keys) => { for (const k of keys) { if (result[k] != null && result[k] !== '') return result[k]; } return ''; };
+    // No fabricated per-field confidence. The model is not asked for one and we have no
+    // ground truth, so leaving conf empty makes makeDoc record null — the UI then shows
+    // no (misleading) confidence number. Grounding is conveyed separately by the box pin.
     const conf = {};
-    (C.LAYOUTS[type] ? C.LAYOUTS[type].fields : []).forEach((f) => { conf[f.key] = 0.88; });
     const values = {
       document_title: pick('document_title', 'title', 'doc_title'),
       document_no: pick('document_no', 'document_number', 'doc_no', 'po_no', 'invoice_no', 'reference_no', 'number'),
@@ -284,8 +286,10 @@
       'bill_to, ship_to, supplier, customer, delivery_address, terms_and_conditions — strings (use "" if absent). ' +
       'For transaction_date prefer YYYY-MM-DD.\n' +
       '- subtotal, gst, grand_total — numbers (use 0 if absent).\n' +
-      '- line_items — an array containing EVERY row across ALL pages; each item is ' +
-      '{ serial_no, stock_code, description, remark, quantity, uom, unit_price, total_price }.\n' +
+      '- line_items — an array of ACTUAL product or service rows only (across all pages). ' +
+      'Each row MUST have at minimum a description. EXCLUDE: blank rows, column header rows, ' +
+      'section sub-headers, separator lines, subtotal rows, and grand total rows — those belong in the totals fields above. ' +
+      'Each item is { serial_no, stock_code, description, remark, quantity, uom, unit_price, total_price }.\n' +
       '- boxes — an array; for EVERY field you found, one entry { key, ymin, xmin, ymax, xmax } where key is the ' +
       'field name (e.g. "document_no", "grand_total") and the four numbers are the bounding box as ' +
       '[ymin, xmin, ymax, xmax] — the VERTICAL (y) axis comes FIRST — each an integer normalized 0-1000, origin top-left.\n' +

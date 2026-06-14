@@ -149,9 +149,6 @@
         if (hasNum(li.quantity) && hasNum(li.unit_price) && hasNum(li.total_price) && Math.abs(calc - num(li.total_price)) > 0.01)
           add('warning', 'Line total does not match', 'quantity × unit_price = total_price',
             `Row ${i + 1}: ${num(li.quantity)} × ${money(li.unit_price)} = ${money(calc)}, not ${money(li.total_price)}.`, 'line_items');
-        if (num(li.confidence) < 0.7)
-          add('warning', 'Low-confidence line item', `row ${i + 1} confidence < 70%`,
-            `${li.description || 'Row ' + (i + 1)} — verify quantity and unit price.`, 'line_items');
       });
 
       const t = doc.totals || {};
@@ -185,9 +182,11 @@
   }
 
   function docConfidence(doc) {
-    const cs = (doc.fields || []).filter((f) => !f.table).map((f) => f.confidence);
-    (doc.line_items || []).forEach((li) => cs.push(num(li.confidence)));
-    return cs.length ? +avg(cs).toFixed(2) : 0;
+    // Average only real (non-null) confidences. Returns null when none exist
+    // (LLM extraction supplies no confidence), so the UI shows no fake number.
+    const cs = (doc.fields || []).filter((f) => !f.table && f.confidence != null).map((f) => f.confidence);
+    (doc.line_items || []).forEach((li) => { if (li.confidence != null) cs.push(num(li.confidence)); });
+    return cs.length ? +avg(cs).toFixed(2) : null;
   }
 
   // Build the reviewed_json payload from the working doc state.
@@ -237,7 +236,8 @@
       // AI-grounded box (from LLM) overrides the default layout box when present
       box: (opts.boxes && opts.boxes[lf.key]) ? opts.boxes[lf.key] : lf.box,
       grounded: !!(opts.boxes && opts.boxes[lf.key]),
-      confidence: opts.conf && opts.conf[lf.key] != null ? opts.conf[lf.key] : 0.92,
+      // confidence is null unless a real value is supplied — we don't fabricate one.
+      confidence: opts.conf && opts.conf[lf.key] != null ? opts.conf[lf.key] : null,
       editable: lf.key !== 'line_items', edited: false,
     }));
     const doc = {
@@ -251,7 +251,7 @@
       is_sample: false,
       file_blob: null,
       letterhead: { ...layout.letterhead, company: opts.company, address: opts.address, subtitle: t.label },
-      pages: layout.pages.map((p) => ({ ...p, conf: p.no === 1 ? 0.86 : 0.7 })),
+      pages: layout.pages.map((p) => ({ ...p, conf: null })),
       fields,
       line_items: t.hasPrices ? opts.lineItems : (opts.lineItems || []).map(({ unit_price, total_price, ...r }) => r),
       totals: t.hasPrices ? opts.totals : null,
@@ -266,10 +266,10 @@
     doc.validation_issues = validate(doc);
     doc.confidence = opts.confidence != null ? opts.confidence : docConfidence(doc);
     if (doc.status === 'need_review' || doc.status === 'ready') doc.status = deriveStatus(doc);
-    // pages confidence from fields
+    // pages confidence from fields — only real (non-null) field confidences count
     doc.pages.forEach((p) => {
-      const fc = doc.fields.filter((f) => f.page === p.no && !f.table).map((f) => f.confidence);
-      if (fc.length) p.conf = +avg(fc).toFixed(2);
+      const fc = doc.fields.filter((f) => f.page === p.no && !f.table && f.confidence != null).map((f) => f.confidence);
+      p.conf = fc.length ? +avg(fc).toFixed(2) : null;
     });
     return doc;
   }
